@@ -273,6 +273,32 @@ module Beaker
         end
       end
 
+      # Create a temp directory on remote host owned by specified user.
+      #
+      # @param [Host] host A single remote host on which to create and adjust
+      # the ownership of a temp directory.
+      # @param [String] name A remote path prefix for the new temp
+      # directory.
+      # @param [String] user The name of user that should own the temp
+      # directory.
+      # @!macro common_opts
+      #
+      # @return [String] Returns the name of the newly-created file.
+      def create_tmpdir_on(host, name, user=nil, opts = {})
+        if not user
+          user = puppet('master')['user']
+        end
+
+        case host 
+        when Unix::Host
+          dir = host.tmpdir(name)
+          host.execute("chown #{user}.#{user} #{dir}")
+          return dir
+        else
+          raise(Exception, "Host platform not supported by create_remote_tmpdir.") 
+        end
+      end
+
       # Move a local script to a remote host and execute it
       # @note this relies on {#on} and {#scp_to}
       #
@@ -301,6 +327,25 @@ module Beaker
       # @see #run_script_on
       def run_script(script, opts = {}, &block)
         run_script_on(default, script, opts, &block)
+      end
+
+      # Copy a puppet module from a given source to all hosts under test.
+      # Assumes each host under test has an associated 'distmoduledir' (set in the
+      # host configuration YAML file).
+      #
+      # @param opts [Hash]
+      # @option opts [String] :source The location on the test runners box where the files are found
+      # @option opts [String] :module_name The name of the module to be copied over
+      def puppet_module_install_on(host, opts = {})
+        Array(host).each do |host|
+          scp_to host, opts[:source], File.join(host['distmoduledir'], opts[:module_name])
+        end
+      end
+
+      # Copy a puppet module from a given source to all hosts under test.
+      # @see #puppet_module_install_on
+      def puppet_module_install opts = {}
+        puppet_module_install_on(hosts, opts)
       end
 
       # Limit the hosts a test case is run against
@@ -894,6 +939,11 @@ module Beaker
       end
 
       def curl_with_retries(desc, host, url, desired_exit_codes, max_retries = 60, retry_interval = 1)
+        if (host['curl-retries'])
+          max_retries = host['curl-retries']
+          logger.warn "Setting curl retries to #{max_retries}"
+        end
+
         retry_command(desc, host, "curl -m 1 #{url}", desired_exit_codes, max_retries, retry_interval)
       end
 
@@ -926,7 +976,13 @@ module Beaker
         # that if the script doesn't exist, we should just use `pe-puppet`
         result = on agent, "[ -e /etc/init.d/pe-puppet-agent ]", :acceptable_exit_codes => [0,1]
         agent_service = (result.exit_code == 0) ? 'pe-puppet-agent' : 'pe-puppet'
-        on agent, puppet_resource('service', agent_service, 'ensure=stopped')
+        if agent['platform'] =~ /el-4/
+          # On EL4, the init script does not work correctly with
+          # 'puppet resource service'
+          on agent, "/etc/init.d/#{agent_service} stop"
+        else
+          on agent, puppet_resource('service', agent_service, 'ensure=stopped')
+        end
       end
 
       #stops the puppet agent running on the default host

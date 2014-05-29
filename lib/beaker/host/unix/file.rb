@@ -6,7 +6,7 @@ module Unix::File
   end
 
   def tmpdir(name)
-    execute("mktemp -td #{name}.XXXXXX")
+    execute("mktemp -dt #{name}.XXXXXX")
   end
 
   # Create a temporary directory owned by the Puppet user.
