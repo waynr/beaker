@@ -939,6 +939,11 @@ module Beaker
       end
 
       def curl_with_retries(desc, host, url, desired_exit_codes, max_retries = 60, retry_interval = 1)
+        if (host['curl-retries'])
+          max_retries = host['curl-retries']
+          logger.warn "Setting curl retries to #{max_retries}"
+        end
+
         retry_command(desc, host, "curl -m 1 #{url}", desired_exit_codes, max_retries, retry_interval)
       end
 
