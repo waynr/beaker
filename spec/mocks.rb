@@ -43,7 +43,7 @@ module MockNet
         @uri = uri
       end
     end
-    
+
     def initialize host, port
       @host = host
       @port = port
@@ -54,6 +54,15 @@ module MockNet
     end
   end
 
+end
+
+class FakeCommand
+  attr_accessor :command
+  attr_accessor :args
+  def initialize(command, args='')
+    @command = command
+    @args = args
+  end
 end
 
 class FakeHost
@@ -84,6 +93,26 @@ class FakeHost
   def exec(command, options = {})
     commands << command
     any_exec_result
+  end
+
+  def execute(command, options = {})
+    b = FakeCommand.new command
+    commands << b
+    any_exec_result
+  end
+
+  def tmpdir(name)
+    b = FakeCommand.new "mktemp -dt #{name}.XXXXXX"
+    commands << b
+    "#{name}.XXXXXX"
+  end
+
+  def puppet(subcommand)
+    case subcommand
+    when 'master'
+      { 'user' => 'puppet'
+      }
+    end
   end
 
   def command_strings

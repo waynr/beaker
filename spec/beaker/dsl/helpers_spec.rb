@@ -210,6 +210,47 @@ describe ClassMixedWithDSLHelpers do
     end
   end
 
+  describe '#create_tmpdir_for_user' do
+    let(:host) do
+      FakeHost.new(:options => {})
+    end
+
+    context 'with no user argument' do
+
+      context 'with path name argument' do
+        context 'creates a temporary directory on the remote host' do
+          it 'executes chown once' do
+            subject.create_tmpdir_for_user(host)
+            expect(host).to execute_commands_matching(/mktemp -dt \/tmp\/beaker.*/).exactly(1).times
+            expect(host).to execute_commands_matching(/chown puppet.puppet \/tmp\/beaker.*/).exactly(1).times
+          end
+        end
+      end
+
+      context 'with no path name argument' do
+        context 'creates a temporary directory on the remote host' do
+          it 'executes chown once' do
+            subject.create_tmpdir_for_user(host, "/tmp/bogus")
+            expect(host).to execute_commands_matching(/mktemp -dt \/tmp\/bogus.*/).exactly(1).times
+            expect(host).to execute_commands_matching(/chown puppet.puppet \/tmp\/bogus.*/).exactly(1).times
+          end
+        end
+      end
+
+    end
+
+    context 'with a user argument' do
+      context 'creates a temporary directory on the remote host' do
+        it 'executes chown once' do
+          subject.create_tmpdir_for_user(host, "/tmp/bogus", "curiousgeorge")
+          expect(host).to execute_commands_matching(/mktemp -dt \/tmp\/bogus/).exactly(1).times
+          expect(host).to execute_commands_matching(/chown curiousgeorge.curiousgeorge \/tmp\/bogus.*/).exactly(1).times
+        end
+      end
+    end
+
+  end
+
   describe '#run_script_on' do
     it 'scps the script to a tmpdir and executes it on host(s)' do
       subject.should_receive( :scp_to )

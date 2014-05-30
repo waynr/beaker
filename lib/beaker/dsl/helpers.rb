@@ -281,21 +281,20 @@ module Beaker
       # directory.
       # @param [String] user The name of user that should own the temp
       # directory.
-      # @!macro common_opts
       #
       # @return [String] Returns the name of the newly-created file.
-      def create_tmpdir_on(host, name, user=nil, opts = {})
+      def create_tmpdir_for_user(host, name='/tmp/beaker', user=nil)
         if not user
-          user = puppet('master')['user']
+          user = host.puppet('master')['user']
         end
 
-        case host 
-        when Unix::Host
+
+        if defined? host.tmpdir
           dir = host.tmpdir(name)
-          host.execute("chown #{user}.#{user} #{dir}")
+          on host, "chown #{user}.#{user} #{dir}"
           return dir
         else
-          raise(Exception, "Host platform not supported by create_remote_tmpdir.") 
+          raise(Exception, "Host platform not supported by create_remote_tmpdir.")
         end
       end
 
