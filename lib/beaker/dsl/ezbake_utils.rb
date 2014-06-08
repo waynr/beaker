@@ -72,7 +72,7 @@ module Beaker
           end
 
         else
-            host.logger.notify("No repository installation step for #{platform} yet...")
+          raise "No repository installation step for #{platform} yet..."
         end
 
       end
@@ -124,23 +124,6 @@ module Beaker
         # untar tarball on host
         on host, "tar -xzf " + remote_tarball
 
-        # install user
-        group = ezbake[:group]
-        user = ezbake[:user]
-        manifest = <<-EOS
-        group { '#{group}':
-          ensure => present,
-          system => true,
-        }
-        user { '#{user}':
-          ensure => present,
-          gid => '#{group}',
-          managehome => false,
-          system => true,
-        }
-        EOS
-        apply_manifest_on(host, manifest)
-
         # "make" on target
         cd_to_package_dir = "cd /root/" + dir_name + "; "
         make_env = "env prefix=/usr confdir=/etc rundir=/var/run/#{project_name} "
@@ -158,7 +141,7 @@ module Beaker
             make_env += "defaultsdir=/etc/defaults "
             on host, cd_to_package_dir + make_env + "make -e install-deb-sysv-init"
           else
-            host.logger.notify("No ezbake installation step for #{platform} yet...")
+            raise "No ezbake installation step for #{platform} yet..."
         end
       end
 
@@ -167,6 +150,8 @@ module Beaker
         if system "git --work-tree=#{local_path} --git-dir=#{local_path}/.git status"
           system "git --work-tree=#{local_path} --git-dir=#{local_path}/.git pull"
         else
+          local_path = File.dirname(local_path)
+          FileUtils.mkdir_p(local_path) # make parent directory
           system "git clone #{upstream_uri} #{local_path}"
         end
       end
