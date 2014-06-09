@@ -215,6 +215,17 @@ module Beaker
         host.check_for_package package_name
       end
 
+      # Install a package with specific verison on a host
+      #
+      # @param [Host] host             A host object
+      # @param [String] package_name   Name of the package to install
+      # @param [String] package_version   Version of the package to install
+      #
+      # @return [Result]   An object representing the outcome of *install command*.
+      def install_package_version host, package_name, package_version
+        host.install_package_version package_name, package_version
+      end
+
       # Install a package on a host
       #
       # @param [Host] host             A host object
@@ -938,21 +949,33 @@ module Beaker
       end
 
       def curl_with_retries(desc, host, url, desired_exit_codes, max_retries = 60, retry_interval = 1)
+        if host['curl-retries']
+          max_retries = host['curl-retries']
+          logger.warn "Setting curl retries to #{max_retries}"
+        end
+
         retry_command(desc, host, "curl -m 1 #{url}", desired_exit_codes, max_retries, retry_interval)
       end
+      
 
       def retry_command(desc, host, command, desired_exit_codes = 0, max_retries = 60, retry_interval = 1)
+        log_prefix = host.log_prefix
+        @logger.debug "\n#{log_prefix} #{Time.new.strftime('%H:%M:%S')}$ #{command}"
+        @logger.debug "  Trying command #{max_retries} times."
+        @logger.debug ".", add_newline=false
         desired_exit_codes = [desired_exit_codes].flatten
-        result = on host, command, :acceptable_exit_codes => (0...127)
+        result = on host, command, {:acceptable_exit_codes => (0...127), :silent => true}
         num_retries = 0
         until desired_exit_codes.include?(result.exit_code)
           sleep retry_interval
-          result = on host, command, :acceptable_exit_codes => (0...127)
+          result = on host, command, {:acceptable_exit_codes => (0...127), :silent => true}
           num_retries += 1
+          @logger.debug ".", add_newline=false
           if (num_retries > max_retries)
-            fail("Unable to #{desc}")
+            fail("Command \`#{command}\` failed.")
           end
         end
+        @logger.debug "\n#{log_prefix} #{Time.new.strftime('%H:%M:%S')}$ #{command} ostensibly successful."
       end
 
       #stops the puppet agent running on the host
