@@ -520,35 +520,18 @@ module Beaker
         curl_retries = host['master-start-curl-retries'] || options['master-start-curl-retries']
         logger.debug "Setting curl retries to #{curl_retries}"
 
-        if options[:is_puppetserver]
-          confdir = host.puppet('master')['confdir']
-          vardir = host.puppet('master')['vardir']
-
-          if cmdline_args
-            split_args = cmdline_args.split()
-
-            split_args.each do |arg|
-              case arg
-              when /--confdir=(.*)/
-                confdir = $1
-              when /--vardir=(.*)/
-                vardir = $1
-              end
-            end
-          end
-
-          puppetserver_opts = { "jruby-puppet" => {
-            "master-conf-dir" => confdir,
-            "master-var-dir" => vardir,
-          }}
-
-          puppetserver_conf = File.join("#{host['puppetserver-confdir']}", "puppetserver.conf")
-          modify_tk_config(host, puppetserver_conf, puppetserver_opts)
-        end
-
         begin
-          backup_file = backup_the_file(host, host['puppetpath'], testdir, 'puppet.conf')
+          puppetconf = File.join(host['puppetpath'], 'puppet.conf')
+          puppetconf_backup = backup_file(host, puppet_conf, testdir)
           lay_down_new_puppet_conf host, conf_opts, testdir
+
+          if options[:is_puppetserver]
+            puppetserverconf = File.join("#{host['puppetserver-confdir']}",
+                                         "puppetserver.conf")
+            puppetserverconf_backup = backup_file(host, puppetserverconf,
+                                                  testdir)
+            modify_puppetserver_conf(host, puppetserverconf, cmdline_args)
+          end
 
           if host.use_service_scripts? && !service_args[:bypass_service_script]
             bounce_service( host, host['puppetservice'], curl_retries )
@@ -565,8 +548,12 @@ module Beaker
         ensure
           begin
 
+            if options[:is_puppetserver]
+              restore_file_from_backup( host, puppetserverconf, puppetserverconf_backup )
+            end
+
             if host.use_service_scripts? && !service_args[:bypass_service_script]
-              restore_puppet_conf_from_backup( host, backup_file )
+              restore_file_from_backup( host, puppetconf, puppetconf_backup )
               bounce_service( host, host['puppetservice'], curl_retries )
             else
               if puppet_master_started
@@ -574,7 +561,7 @@ module Beaker
               else
                 dump_puppet_log(host)
               end
-              restore_puppet_conf_from_backup( host, backup_file )
+              restore_file_from_backup( host, puppetconf, puppetconf_backup )
             end
 
           rescue Exception => teardown_exception
@@ -605,18 +592,15 @@ module Beaker
       end
 
       # @!visibility private
-      def restore_puppet_conf_from_backup( host, backup_file )
-        puppetpath = host['puppetpath']
-        puppet_conf = File.join(puppetpath, "puppet.conf")
-
-        if backup_file
-          host.exec( Command.new( "if [ -f '#{backup_file}' ]; then " +
-                                      "cat '#{backup_file}' > " +
-                                      "'#{puppet_conf}'; " +
-                                      "rm -f '#{backup_file}'; " +
+      def restore_file_from_backup( host, file, backup )
+        if backup
+          host.exec( Command.new( "if [ -f '#{backup}' ]; then " +
+                                      "cat '#{backup}' > " +
+                                      "'#{file}'; " +
+                                      "rm -f '#{backup}'; " +
                                   "fi" ) )
         else
-          host.exec( Command.new( "rm -f '#{puppet_conf}'" ))
+          host.exec( Command.new( "rm -f '#{file}'" ))
         end
 
       end
@@ -624,6 +608,7 @@ module Beaker
       # Back up the given file in the current_dir to the new_dir
       #
       # @!visibility private
+      # @deprecated
       #
       # @param host [Beaker::Host] The target host
       # @param current_dir [String] The directory containing the file to back up
@@ -642,6 +627,20 @@ module Beaker
           return new_location
         else
           logger.warn "Could not backup file '#{old_location}': no such file"
+          nil
+        end
+      end
+
+      # @!visibility private
+      def backup_file host, file, backup_dir
+        filename = File.basename(file)
+        backup = backup_dir + '/' + filename + '.bak'
+
+        if host.file_exist? file
+          host.exec( Command.new( "cp #{file} #{backup}" ) )
+          return backup
+        else
+          logger.warn "Could not backup file '#{file}': no such file"
           nil
         end
       end
@@ -1299,6 +1298,32 @@ module Beaker
         else
           on host, "curl %s" % cmd, opts, &block
         end
+      end
+
+      # @!visibility private
+      def modify_puppetserver_conf( host, puppetconf, cmdline_args = nil )
+        confdir = host.puppet('master')['confdir']
+        vardir = host.puppet('master')['vardir']
+
+        if cmdline_args
+          split_args = cmdline_args.split()
+
+          split_args.each do |arg|
+            case arg
+            when /--confdir=(.*)/
+              confdir = $1
+            when /--vardir=(.*)/
+              vardir = $1
+            end
+          end
+        end
+
+        puppetserver_opts = { "jruby-puppet" => {
+          "master-conf-dir" => confdir,
+          "master-var-dir" => vardir,
+        }}
+
+        modify_tk_config(host, conffile, puppetserver_opts)
       end
     end
   end
